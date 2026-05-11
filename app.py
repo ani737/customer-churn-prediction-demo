@@ -44,7 +44,7 @@ def preprocess_and_train(df, target_col):
         y_encoder = LabelEncoder()
         y = y_encoder.fit_transform(y)
         le['_target'] = y_encoder
-    X = df.drop(columns=[target_col])
+    X = df.drop(columns=[target_col] + (['customerid'] if 'customerid' in df.columns else []))
     feature_cols = X.columns.tolist()
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
