@@ -1,0 +1,16 @@
+customer_id,age,gender,country,has_subscription,preferred_channel,total_purchases,total_spent,last_purchase_days,avg_order_value,network_satisfaction,churned
+1001,34,Male,India,Yes,Email,15,2500.00,10,166.67,4.5,No
+1002,28,Female,India,No,WhatsApp,8,1200.00,30,150.00,3.2,Yes
+1003,45,Male,India,Yes,Phone,25,8000.00,5,320.00,4.8,No
+1004,22,Female,USA,No,Email,3,450.00,60,150.00,2.1,Yes
+1005,38,Male,UK,Yes,WhatsApp,20,5500.00,12,275.00,4.6,No
+1006,52,Female,India,No,Phone,30,12000.00,3,400.00,4.9,No
+1007,25,Male,USA,Yes,Email,10,1800.00,20,180.00,3.5,No
+1008,33,Female,UK,No,WhatsApp,5,900.00,45,180.00,2.5,Yes
+1009,41,Male,India,Yes,Phone,22,7200.00,7,327.27,4.7,No
+1010,29,Female,USA,No,Email,6,1000.00,35,166.67,2.8,Yes
+1011,47,Male,UK,Yes,WhatsApp,28,9500.00,4,339.29,4.8,No
+1012,23,Female,India,No,Phone,4,600.00,50,150.00,2.3,Yes
+1013,36,Male,USA,Yes,Email,18,4200.00,15,233.33,4.2,No
+1014,31,Female,UK,No,WhatsApp,7,1300.00,28,185.71,3.0,Yes
+1015,43,Male,India,Yes,Phone,24,7800.00,6,325.00,4.7,No
