@@ -46,6 +46,7 @@ def preprocess_and_train(df, target_col):
         le['_target'] = y_encoder
     X = df.drop(columns=[target_col] + (['customerid'] if 'customerid' in df.columns else []))
     feature_cols = X.columns.tolist()
+    X = X.apply(pd.to_numeric, errors='coerce').fillna(0)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     X_train, X_test, y_train, y_test = train_test_split(
