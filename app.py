@@ -7,26 +7,16 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from pathlib import Path
 
-st.set_page_config(
-    page_title="Customer Churn Prediction",
-    page_icon="📊",
-    layout="wide"
-)
+st.set_page_config(page_title="Customer Churn Prediction", page_icon="📊", layout="wide")
 
 DATA_PATH = Path("data/ecommerce_customer_churn.csv")
 TARGET_COL = "churned"
 
 FRIENDLY_LABELS = {
-    "age": "Age",
-    "gender": "Gender",
-    "country": "Country",
-    "tenure_months": "Tenure (months)",
-    "avg_order_value": "Average Order Value",
-    "orders_last_12m": "Orders in Last 12 Months",
-    "returns_rate": "Returns Rate",
-    "preferred_channel": "Preferred Channel",
-    "support_tickets": "Support Tickets",
-    "has_subscription": "Has Subscription",
+    "age": "Age", "gender": "Gender", "country": "Country", "tenure_months": "Tenure (months)",
+    "avg_order_value": "Average Order Value", "orders_last_12m": "Orders in Last 12 Months",
+    "returns_rate": "Returns Rate", "preferred_channel": "Preferred Channel",
+    "support_tickets": "Support Tickets", "has_subscription": "Has Subscription",
     "discount_usage_pct": "Discount Usage Percentage"
 }
 
@@ -59,11 +49,10 @@ def init_state():
     defaults = {"model": None, "df_raw": None, "label_encoders": {}, "feature_cols": [],
                 "target_col": TARGET_COL, "scaler": None, "feature_meta": {}, "accuracy": None,
                 "y_test": None, "y_pred": None, "feature_importance": None, "reference_stats": None,
-                "drop_cols": [], "training_df": None}
+                "drop_cols": [], "training_df": None, "churn_class_idx": None, "not_churn_class_idx": None}
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
-
 init_state()
 
 @st.cache_data
@@ -89,41 +78,38 @@ def preprocess_and_train(df, target_col):
     y = df[target_col]
     if y.dtype == "object":
         y_encoder = LabelEncoder()
-        y = y_encoder.fit_transform(y.astype(str))
+        y_encoded = y_encoder.fit_transform(y.astype(str))
         le["_target"] = y_encoder
+        y = y_encoded
+        st.session_state.churn_class_idx = int(y_encoder.transform(["1"])[0] if "1" in y_encoder.classes_ else (int(y_encoder.transform(["Churned"])[0]) if "Churned" in y_encoder.classes_ else np.argmax(y_encoder.classes_)))
+        st.session_state.not_churn_class_idx = 1 if st.session_state.churn_class_idx == 0 else 0
+    else:
+        unique_vals = sorted(df[target_col].astype(str).unique().tolist())
+        st.session_state.churn_class_idx = int(unique_vals.index("1")) if "1" in unique_vals else int(unique_vals.index("Churned")) if "Churned" in unique_vals else 1
+        st.session_state.not_churn_class_idx = 0 if st.session_state.churn_class_idx == 1 else 1
 
     raw_X = df.drop(columns=drop_cols)
     feature_cols = raw_X.columns.tolist()
     st.session_state.feature_cols = feature_cols
     st.session_state.label_encoders = le
-
     raw_X = raw_X.apply(pd.to_numeric, errors="coerce").fillna(0)
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(raw_X)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_scaled, y, test_size=0.2, random_state=42, stratify=y
-    )
-
-    model = RandomForestClassifier(random_state=42, n_estimators=300, max_depth=12,
-                                   min_samples_split=8, min_samples_leaf=3)
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42, stratify=y)
+    model = RandomForestClassifier(random_state=42, n_estimators=300, max_depth=12, min_samples_split=8, min_samples_leaf=3)
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
-
     importance = dict(zip(feature_cols, model.feature_importances_))
 
     reference_stats = {}
     for col in feature_cols:
         if pd.api.types.is_numeric_dtype(raw_X[col]):
             vals = pd.to_numeric(raw_X[col], errors="coerce")
-            reference_stats[col] = {
-                "median": float(vals.median()),
-                "q1": float(vals.quantile(0.25)),
-                "q3": float(vals.quantile(0.75)),
-            }
+            reference_stats[col] = {"median": float(vals.median()), "q1": float(vals.quantile(0.25)), "q3": float(vals.quantile(0.75))}
         else:
             reference_stats[col] = {"median": None, "q1": None, "q3": None,
                                     "mode": raw_X[col].mode().iloc[0] if len(raw_X[col].mode()) > 0 else None}
@@ -140,20 +126,17 @@ def build_feature_metadata(df, feature_cols, drop_cols):
         rule = FIELD_RULES.get(col, {})
         if col in FIELD_RULES and FIELD_RULES[col]["widget"] == "categorical":
             options = sorted(series.dropna().astype(str).unique().tolist())
-            meta[col] = {"type": "categorical", "options": options,
-                         "default": options[0] if options else "",
+            meta[col] = {"type": "categorical", "options": options, "default": options[0] if options else "",
                          "help": FIELD_RULES[col]["explanation"]}
             continue
         if col == "has_subscription":
-            meta[col] = {"type": "binary", "options": [1, 0], "default": 1,
-                         "help": FIELD_RULES[col]["explanation"]}
+            meta[col] = {"type": "binary", "options": [1, 0], "default": 1, "help": FIELD_RULES[col]["explanation"]}
             continue
         if pd.api.types.is_numeric_dtype(series):
             data_min = float(pd.to_numeric(series, errors="coerce").min())
             data_max = float(pd.to_numeric(series, errors="coerce").max())
             data_median = float(pd.to_numeric(series, errors="coerce").median())
-            min_val = data_min
-            max_val = data_max
+            min_val, max_val = data_min, data_max
             widget = rule.get("widget", "float")
             step = rule.get("step", 1.0)
             if "min" in rule:
@@ -162,11 +145,8 @@ def build_feature_metadata(df, feature_cols, drop_cols):
                 max_val = min(max_val, float(rule["max"]))
             default_val = min(max(data_median, min_val), max_val)
             if widget in ["int", "slider_0_100"]:
-                min_val = int(round(min_val))
-                max_val = int(round(max_val))
-                default_val = int(round(default_val))
-            meta[col] = {"type": "numeric", "widget": widget,
-                         "min": min_val, "max": max_val, "step": step, "default": default_val,
+                min_val, max_val, default_val = int(round(min_val)), int(round(max_val)), int(round(default_val))
+            meta[col] = {"type": "numeric", "widget": widget, "min": min_val, "max": max_val, "step": step, "default": default_val,
                          "help": rule.get("explanation", f"Enter a valid value for {col}."),
                          "range_text": f"Dataset range: {data_min:.2f} to {data_max:.2f}"}
     return meta
@@ -197,7 +177,7 @@ def explain_prediction(inputs, churn_probability):
             q1, q3 = stats.get("q1"), stats.get("q3")
             if feature == "support_tickets":
                 if value > median:
-                    reasons.append((weight, f"{label} is above the typical level ({value} vs median {median:.1f}), suggesting the customer may be frustrated."))
+                    reasons.append((weight, f"{label} is above typical ({value} vs median {median:.1f}), suggesting frustration."))
                 elif value == 0:
                     reasons.append((weight - 0.05, f"{label} is zero — a positive sign of smooth experience."))
             elif feature == "returns_rate":
@@ -207,7 +187,7 @@ def explain_prediction(inputs, churn_probability):
                     reasons.append((weight - 0.03, f"{label} is very low ({value:.2f}), suggesting general satisfaction."))
             elif feature == "tenure_months":
                 if value < median:
-                    reasons.append((weight, f"{label} is below the typical ({value} vs median {median:.1f}). Newer customers tend to churn more."))
+                    reasons.append((weight, f"{label} is below typical ({value} vs median {median:.1f}). Newer customers churn more."))
                 elif value > median * 1.5:
                     reasons.append((weight - 0.04, f"{label} is well above average ({value}), suggesting a loyal customer."))
             elif feature == "orders_last_12m":
@@ -227,16 +207,15 @@ def explain_prediction(inputs, churn_probability):
                     reasons.append((weight - 0.02, f"{label} is in the higher range ({value} vs upper quartile {q3:.1f})."))
         if feature == "has_subscription":
             if int(value) == 0:
-                reasons.append((weight + 0.05, "The customer does not have an active subscription — a common factor in churn cases."))
+                reasons.append((weight + 0.05, "No active subscription — a common factor in churn cases."))
             else:
-                reasons.append((weight - 0.04, "The customer has an active subscription, a strong retention signal."))
+                reasons.append((weight - 0.04, "Active subscription — a strong retention signal."))
     reasons = sorted(reasons, key=lambda x: x[0], reverse=True)
     top_reasons = [text for _, text in reasons[:5]]
     if not top_reasons:
         top_reasons = ["Most input values match stable customer patterns in the training data."] if churn_probability < 0.5 else \
                       ["The input values align with patterns learned from past churn cases."]
     return top_reasons
-
 
 if st.session_state.df_raw is None:
     if not DATA_PATH.exists():
@@ -245,15 +224,13 @@ if st.session_state.df_raw is None:
         st.session_state.df_raw = load_dataset(DATA_PATH)
 
 st.sidebar.title("🔧 Navigation")
-page = st.sidebar.radio("Select Page",
-    ["📤 Upload Dataset", "🧠 Train Model", "🔮 Predict Churn", "📈 Model Performance"])
-
+page = st.sidebar.radio("Select Page", ["📤 Upload Dataset", "🧠 Train Model", "🔮 Predict Churn", "📈 Model Performance"], index=0)
 st.title("📊 Customer Churn Prediction Demo")
 st.markdown("---")
 
 if page == "📤 Upload Dataset":
-    st.header("Step 1: Dataset Loaded")
-    st.info("This app uses the ecommerce customer churn dataset from the local data folder.")
+    st.header("Step 1: Upload / Load Dataset")
+    st.info("This app uses the ecommerce customer churn dataset from the data folder.")
     if st.session_state.df_raw is not None:
         df = st.session_state.df_raw
         st.success(f"Dataset ready! Shape: {df.shape}")
@@ -278,8 +255,7 @@ elif page == "🧠 Train Model":
             st.session_state.accuracy = result[2]
             st.session_state.y_test = result[3]
             st.session_state.y_pred = result[4]
-            st.session_state.feature_meta = build_feature_metadata(
-                df, st.session_state.feature_cols, st.session_state.drop_cols)
+            st.session_state.feature_meta = build_feature_metadata(df, st.session_state.feature_cols, st.session_state.drop_cols)
             st.success("Model trained successfully!")
             st.metric("Model Accuracy", f"{result[2]:.2%}")
             importance_df = pd.DataFrame({"Feature": list(st.session_state.feature_importance.keys()),
@@ -341,29 +317,26 @@ elif page == "🔮 Predict Churn":
 
         if st.button("🔍 Predict Churn"):
             try:
-                # Create input DataFrame with columns in exact training order
                 input_row = pd.DataFrame([inputs], index=[0])
-
-                # Reindex to match training feature column order (missing cols get NaN)
                 input_row = input_row.reindex(columns=feature_cols, fill_value=None)
 
-                # Apply label encoding for categorical columns
                 for col in input_row.columns:
                     if col in st.session_state.label_encoders:
                         input_row[col] = input_row[col].astype(str)
                         input_row[col] = st.session_state.label_encoders[col].transform(input_row[col])
 
-                # Convert everything to numeric and fill NaN with 0
                 input_row = input_row.apply(pd.to_numeric, errors="coerce").fillna(0)
-
-                # Scale the input
                 X_scaled = st.session_state.scaler.transform(input_row)
 
-                # Predict
                 pred = st.session_state.model.predict(X_scaled)[0]
                 proba = st.session_state.model.predict_proba(X_scaled)[0]
 
-                churn_probability = float(np.max(proba))
+                churn_class_idx = st.session_state.churn_class_idx or 1
+                not_churn_class_idx = st.session_state.not_churn_class_idx or 0
+
+                churn_probability = float(proba[churn_class_idx])
+                not_churn_probability = float(proba[not_churn_class_idx])
+
                 label = get_prediction_label(pred)
                 risk_band = get_risk_band(churn_probability)
 
@@ -376,9 +349,9 @@ elif page == "🔮 Predict Churn":
                     st.error(f"**Prediction: {label}**")
 
                 col1, col2, col3 = st.columns(3)
-                col1.metric("Confidence", f"{churn_probability:.2%}")
-                col2.metric("Risk Band", risk_band)
-                col3.metric("Model", "Random Forest")
+                col1.metric("Churn Probability", f"{churn_probability:.2%}")
+                col2.metric("Not Churn Probability", f"{not_churn_probability:.2%}")
+                col3.metric("Risk Band", risk_band)
                 st.progress(churn_probability)
 
                 st.subheader("Why This Prediction?")
@@ -387,12 +360,12 @@ elif page == "🔮 Predict Churn":
                 for i, reason in enumerate(reasons, 1):
                     st.write(f"**{i}.** {reason}")
 
-                st.info("This result is based on patterns the model learned from historical customer data. "
+                st.info("Churn probability shows how likely the customer is to leave. "
                         "The explanation highlights which input values are driving the prediction.")
 
             except Exception as e:
                 st.error(f"Prediction failed: {str(e)}")
-                st.info("Please ensure the model has been trained. Try refreshing the page.")
+                st.info("Please retrain the model and try again.")
     else:
         st.warning("Please train the model first.")
 
